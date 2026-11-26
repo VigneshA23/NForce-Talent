@@ -1,0 +1,1 @@
+ALTER TABLE `portal_sessions` ADD `remembered` integer DEFAULT 0 NOT NULL;

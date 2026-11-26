@@ -1,0 +1,48 @@
+'use client';
+import {useMemo,useState} from 'react';
+import {AlertTriangle,CheckCircle2,Clock3,Fingerprint,KeyRound,LockKeyhole,Plus,Search,ShieldCheck,UserCheck,UserRoundCog,Users,X} from 'lucide-react';
+
+type Row=Record<string,any>;
+type AccessData={member:Row;members:Row[];people:Row[]};
+const roleNames:Record<string,string>={hr:'HR Administrator',admin:'Administrator'};
+const initials=(name:string)=>name.split(' ').filter(Boolean).map(x=>x[0]).slice(0,2).join('').toUpperCase()||'?';
+const dateTime=(value:number|string|null)=>value?new Date(Number(value)).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'Asia/Kolkata'}):'Never';
+const needsAttention=(m:Row)=>!!m.active&&['Not issued','Expired','Temporary'].includes(m.password_status||'Not issued');
+
+function statusFor(member:Row){
+ if(!member.active)return {label:'Disabled',tone:'muted',detail:'Sign-in is blocked'};
+ if(member.password_status==='Ready')return {label:'Ready',tone:'ready',detail:'Password configured'};
+ if(member.password_status==='Temporary')return {label:'First sign-in pending',tone:'waiting',detail:'Temporary password issued'};
+ if(member.password_status==='Expired')return {label:'Setup expired',tone:'danger',detail:'Issue a new password'};
+ return {label:'Setup needed',tone:'danger',detail:'No password issued'};
+}
+
+export default function AccessPage({data,currentMember,onOpen,onTalent}:{data:AccessData;currentMember?:Row|null;onOpen:(kind:string,row?:Row)=>void;onTalent:()=>void}){
+ const [query,setQuery]=useState(''),[focus,setFocus]=useState('All'),[role,setRole]=useState('All');
+ const stats={active:data.members.filter(m=>m.active).length,inactive:data.members.filter(m=>!m.active).length,attention:data.members.filter(needsAttention).length};
+ const filtered=useMemo(()=>data.members.filter(m=>{
+  const matches=`${m.name} ${m.email} ${roleNames[m.role]||m.role}`.toLowerCase().includes(query.toLowerCase());
+  const focusMatch=focus==='All'||focus==='Needs attention'&&needsAttention(m)||focus==='Active'&&!!m.active||focus==='Disabled'&&!m.active;
+  const roleMatch=role==='All'||m.role===role;
+  return matches&&focusMatch&&roleMatch;
+ }),[data.members,query,focus,role]);
+ return <div className="access-page">
+  <section className="access-hero"><div><span>ACCESS GOVERNANCE</span><h1>People &amp; Access</h1><p>Control who can sign in to NForce Talent. Employee and candidate histories remain in Talent and do not require portal accounts.</p><div><button className="btn primary" onClick={()=>onOpen('member')}><Plus size={17}/>Create portal account</button><button className="btn access-secondary" onClick={onTalent}><Users size={16}/>Open Talent directory</button></div></div><aside><span><ShieldCheck size={20}/></span><div><small>ACCESS HEALTH</small><strong>{stats.attention?`${stats.attention} account${stats.attention===1?' needs':'s need'} attention`:'All active accounts are ready'}</strong><p>{stats.attention?'Issue or reissue temporary access for the accounts shown in the attention queue.':'Every active account has completed password setup.'}</p></div><i className={stats.attention?'warning':''}/></aside></section>
+  <section className="access-metrics" aria-label="Account summary">
+   <button className={focus==='Active'?'selected':''} onClick={()=>setFocus(focus==='Active'?'All':'Active')}><span className="sage"><UserCheck size={19}/></span><div><strong>{stats.active}</strong><b>Active accounts</b><small>Currently allowed to sign in</small></div></button>
+   <button className={focus==='Needs attention'?'selected':''} onClick={()=>setFocus(focus==='Needs attention'?'All':'Needs attention')}><span className="gold"><Clock3 size={19}/></span><div><strong>{stats.attention}</strong><b>Setup pending</b><small>Password action required</small></div></button>
+   <button className={focus==='Disabled'?'selected':''} onClick={()=>setFocus(focus==='Disabled'?'All':'Disabled')}><span className="muted"><LockKeyhole size={19}/></span><div><strong>{stats.inactive}</strong><b>Disabled accounts</b><small>Retained in history</small></div></button>
+   <button className={role==='All'?'selected':''} onClick={()=>setRole('All')}><span className="blue"><Fingerprint size={19}/></span><div><strong>2</strong><b>Approved roles</b><small>HR Administrator and Administrator</small></div></button>
+  </section>
+  <section className="access-separation"><div><span><Users size={18}/></span><div><b>Talent profile</b><p>Work history, skills, availability, applications, interviews, and feedback. Every employee or candidate can have one.</p></div></div><i/><div><span><KeyRound size={18}/></span><div><b>Portal account</b><p>Email, password, and authorization. Create these only for HR Administrators and Administrators.</p></div></div></section>
+  {data.members.some(needsAttention)&&<section className="access-attention"><AccessHead eyebrow="ATTENTION QUEUE" title="Help people finish setup" text="Temporary passwords expire after 24 hours and are shown only once." right={`${stats.attention} open`}/><div className="access-attention-list">{data.members.filter(needsAttention).map(m=>{const state=statusFor(m);return <article key={m.id}><span className={state.tone}><KeyRound size={17}/></span><div><b>{m.name}</b><p>{state.detail} · {m.email}</p></div><button onClick={()=>onOpen('resetAccess',m)}>{m.password_status==='Temporary'?'Reissue access':'Issue access'}</button></article>})}</div></section>}
+  <section className="access-policy"><AccessHead eyebrow="ROLE POLICY" title="Two roles, no overlapping responsibility" text="Interviewers are assigned to individual internal interviews; they are not a permanent portal role."/><div className="access-policy-grid"><button className={role==='hr'?'selected':''} onClick={()=>setRole(role==='hr'?'All':'hr')}><span className="hr"><ShieldCheck size={20}/></span><div><b>HR Administrator</b><p>Manages portal accounts and security, and can work across every operational record.</p><small>{data.members.filter(m=>m.role==='hr'&&m.active).length} active</small></div></button><button className={role==='admin'?'selected':''} onClick={()=>setRole(role==='admin'?'All':'admin')}><span className="admin"><UserRoundCog size={20}/></span><div><b>Administrator</b><p>Manages requirements, talent, interviews, follow-ups, feedback, and reports—but not account access.</p><small>{data.members.filter(m=>m.role==='admin'&&m.active).length} active</small></div></button><div className="access-policy-note"><CheckCircle2 size={18}/><div><b>No login required for employees or candidates</b><p>Employees provide interview recollections through secure, expiring email links. Their histories remain visible only to authorized portal users.</p></div></div></div></section>
+  <section className="access-directory"><header><div><span>ACCOUNT DIRECTORY</span><h2>Portal accounts</h2><p>{filtered.length} of {data.members.length} accounts shown</p></div><div className="access-tools"><label className="access-search"><Search size={16}/><span className="sr-only">Search accounts</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name or email"/>{query&&<button aria-label="Clear account search" onClick={()=>setQuery('')}><X size={13}/></button>}</label><select aria-label="Filter account status" value={focus} onChange={e=>setFocus(e.target.value)}><option>All</option><option>Needs attention</option><option>Active</option><option>Disabled</option></select><select aria-label="Filter account role" value={role} onChange={e=>setRole(e.target.value)}><option value="All">All roles</option><option value="hr">HR Administrators</option><option value="admin">Administrators</option></select></div></header>
+   <div className="access-table-wrap"><table><thead><tr><th>PERSON</th><th>ROLE &amp; SCOPE</th><th>ACCESS STATUS</th><th>LAST SIGN-IN</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{filtered.map(m=>{const state=statusFor(m);return <tr key={m.id}><td><div className="access-person"><span>{initials(m.name)}</span><div><b>{m.name}{m.id===currentMember?.id&&<small>You</small>}</b><p>{m.email}</p></div></div></td><td><div className="access-scope"><b className={`role-${m.role}`}>{roleNames[m.role]||m.role}</b><small>{m.role==='hr'?'Access security + all operations':m.role==='admin'?'All operational records':'Legacy limited access'}</small></div></td><td><div className={`access-state ${state.tone}`}><i/><span><b>{state.label}</b><small>{state.detail}</small></span></div></td><td><span className="last-signin">{dateTime(m.last_login_at)}</span></td><td><div className="access-row-actions"><button className="btn small-btn" onClick={()=>onOpen('accountAccess',m)}>Manage account</button><button className="access-key-button" disabled={!m.active} onClick={()=>onOpen('resetAccess',m)}><KeyRound size={15}/>{m.password_status==='Ready'?'Reset access':'Issue access'}</button></div></td></tr>})}</tbody></table></div>
+   {!filtered.length&&<div className="access-empty"><Search size={25}/><h3>No accounts match this view</h3><p>Clear the search or change the status and role filters.</p><button onClick={()=>{setQuery('');setFocus('All');setRole('All')}}>Clear filters</button></div>}
+   <footer><ShieldCheck size={16}/><span>Every account change is recorded and signs the affected user out. NForce Talent always keeps at least one active HR Administrator.</span></footer>
+  </section>
+ </div>;
+}
+
+function AccessHead({eyebrow,title,text,right}:{eyebrow:string;title:string;text:string;right?:string}){return <header className="access-section-head"><div><span>{eyebrow}</span><h2>{title}</h2><p>{text}</p></div>{right&&<small>{right}</small>}</header>}

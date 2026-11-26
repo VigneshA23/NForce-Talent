@@ -1,0 +1,1 @@
+ALTER TABLE `members` ADD `last_login_at` integer;

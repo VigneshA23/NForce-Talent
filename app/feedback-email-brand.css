@@ -1,0 +1,7 @@
+.feedback-email{padding:0;background:#fff;overflow:hidden}
+.feedback-email-brand{display:block;width:100%;height:auto;margin:0;border:0}
+.feedback-email-body{padding:30px}
+.feedback-email-body>small{font-size:.67rem;letter-spacing:.14em;color:#a20d2a}
+.feedback-email-body>button{background:#a80f2e;color:#fff;border-radius:9px;padding:12px 18px;font-weight:650;margin:14px 0}
+.feedback-email-body>div:last-child{display:flex;gap:8px;color:#8f8389;font-size:.72rem;align-items:center;margin-top:8px}
+@media(max-width:760px){.feedback-email{padding:0}.feedback-email-body{padding:22px}}

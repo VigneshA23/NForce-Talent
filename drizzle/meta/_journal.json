@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792009809953,
+      "tag": "0000_premium_screwball",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792010403378,
+      "tag": "0001_smart_living_lightning",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792012739670,
+      "tag": "0002_portal_passwords",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792013093036,
+      "tag": "0003_temporary_password_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792014835975,
+      "tag": "0004_remembered_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792016557510,
+      "tag": "0005_bootstrap_hr_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792017015716,
+      "tag": "0006_hr_direct_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792418519992,
+      "tag": "0007_lazy_lyja",
+      "breakpoints": true
+    }
+  ]
+}
