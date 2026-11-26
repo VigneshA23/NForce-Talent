@@ -1,0 +1,126 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages-production
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_PAGES_PROJECT: nforce-talent
+  CLOUDFLARE_D1_DATABASE: nforce-talent-db
+  CLOUDFLARE_R2_BUCKET: nforce-talent-files
+
+jobs:
+  deploy:
+    name: Build, provision, and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application
+        run: pnpm build
+
+      - name: Create or reuse Cloudflare resources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! D1_INFO_JSON="$(pnpm exec wrangler d1 info "$CLOUDFLARE_D1_DATABASE" --json 2>/dev/null)"; then
+            pnpm exec wrangler d1 create "$CLOUDFLARE_D1_DATABASE" --location apac
+            D1_INFO_JSON="$(pnpm exec wrangler d1 info "$CLOUDFLARE_D1_DATABASE" --json)"
+          fi
+
+          D1_DATABASE_ID="$(jq -r '.uuid // .id // .database_id // empty' <<<"$D1_INFO_JSON")"
+          if [[ -z "$D1_DATABASE_ID" ]]; then
+            echo "Cloudflare returned no D1 database identifier."
+            exit 1
+          fi
+
+          if ! pnpm exec wrangler r2 bucket info "$CLOUDFLARE_R2_BUCKET" >/dev/null 2>&1; then
+            pnpm exec wrangler r2 bucket create "$CLOUDFLARE_R2_BUCKET" --location apac
+          fi
+
+          PAGES_PROJECTS_JSON="$(pnpm exec wrangler pages project list --json)"
+          if ! jq -e --arg project "$CLOUDFLARE_PAGES_PROJECT" \
+            'if type == "array" then any(.[]; (.name // .project_name) == $project) else false end' \
+            <<<"$PAGES_PROJECTS_JSON" >/dev/null; then
+            pnpm exec wrangler pages project create "$CLOUDFLARE_PAGES_PROJECT" \
+              --production-branch main \
+              --compatibility-date 2026-05-15 \
+              --compatibility-flags nodejs_compat
+          fi
+
+          jq -n \
+            --arg project "$CLOUDFLARE_PAGES_PROJECT" \
+            --arg database "$CLOUDFLARE_D1_DATABASE" \
+            --arg databaseId "$D1_DATABASE_ID" \
+            --arg bucket "$CLOUDFLARE_R2_BUCKET" \
+            '{
+              "$schema": "node_modules/wrangler/config-schema.json",
+              name: $project,
+              compatibility_date: "2026-05-15",
+              compatibility_flags: ["nodejs_compat"],
+              pages_build_output_dir: "dist/client",
+              vars: {
+                FEEDBACK_DELIVERY_ENABLED: "false",
+                FEEDBACK_FROM_NAME: "NForce Talent",
+                PUBLIC_FEEDBACK_URL: "https://nforce-talent.pages.dev"
+              },
+              d1_databases: [{
+                binding: "DB",
+                database_name: $database,
+                database_id: $databaseId,
+                migrations_dir: "drizzle"
+              }],
+              r2_buckets: [{
+                binding: "BUCKET",
+                bucket_name: $bucket
+              }]
+            }' > wrangler.jsonc
+
+      - name: Apply database migrations
+        run: pnpm exec wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+
+      - name: Package the Pages Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/client/_worker.js
+          cp -R dist/server/. dist/client/_worker.js/
+          rm -f dist/client/_worker.js/wrangler.json
+
+      - name: Deploy production site
+        run: >-
+          pnpm exec wrangler pages deploy dist/client
+          --project-name "$CLOUDFLARE_PAGES_PROJECT"
+          --branch main
+          --commit-hash "$GITHUB_SHA"
+          --commit-message "Deploy $GITHUB_SHA"
