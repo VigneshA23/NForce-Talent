@@ -7,7 +7,7 @@ const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Con
 const reply=(body:unknown,status=200,cookie?:string)=>Response.json(body,{status,headers:{...headers,...(cookie?{'Set-Cookie':cookie}:{})}});
 const invalid=()=>reply({error:'Unable to sign in. Check your details or contact your HR Administrator.'},401);
 // Work is performed for incorrect passwords and nonmatching emails too.
-const dummy='scrypt:16384:8:5:00000000000000000000000000000000:'+('00'.repeat(32));
+const dummy='pbkdf2:sha256:310000:00000000000000000000000000000000:'+('00'.repeat(32));
 export async function GET(){
  try{const m=await session();return reply({email:m.email,name:m.name,configured:true,authenticated:true,canBootstrap:false})}catch{}
  return reply({email:'',configured:true,authenticated:false,canBootstrap:false});
