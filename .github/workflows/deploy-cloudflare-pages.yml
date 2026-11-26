@@ -102,9 +102,11 @@ jobs:
 
           export default {
             async fetch(request, env, context) {
-              const asset = await env.ASSETS.fetch(request);
-              if (asset.status !== 404) {
-                return asset;
+              if (request.method === "GET" || request.method === "HEAD") {
+                const asset = await env.ASSETS.fetch(request);
+                if (asset.status !== 404) {
+                  return asset;
+                }
               }
               return app.fetch(request, env, context);
             },
