@@ -19,9 +19,9 @@ export async function createPortalSession(memberId:string,authId:string,version:
 }
 export const sessionCookie=(token:string,remember=false)=>`${COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Strict${!token?'; Max-Age=0':remember?'; Max-Age='+REMEMBER_TTL:''}`;
 
-export async function portalAccount(authId:string){
+export async function portalAccount(){
  const token=(await cookies()).get(COOKIE)?.value;if(!token||token.length>128)return null;
  const now=Date.now(),hash=digest(token);
- const member=await db().prepare("SELECT m.* FROM portal_sessions s JOIN members m ON m.id=s.member_id JOIN portal_credentials c ON c.member_id=m.id WHERE s.token_hash=? AND s.auth_id=? AND m.active=1 AND m.role IN ('hr','admin') AND c.temporary=0 AND s.credential_version=c.version AND s.expires_at>? AND s.last_seen > ? - CASE WHEN s.remembered=1 THEN 86400000 ELSE 1800000 END").bind(hash,authId,now,now).first<any>();
+ const member=await db().prepare("SELECT m.* FROM portal_sessions s JOIN members m ON m.id=s.member_id JOIN portal_credentials c ON c.member_id=m.id WHERE s.token_hash=? AND m.active=1 AND m.role IN ('hr','admin') AND c.temporary=0 AND s.credential_version=c.version AND s.expires_at>? AND s.last_seen > ? - CASE WHEN s.remembered=1 THEN 86400000 ELSE 1800000 END").bind(hash,now,now).first<any>();
  if(member)await db().prepare('UPDATE portal_sessions SET last_seen=? WHERE token_hash=?').bind(now,hash).run();return member;
 }
