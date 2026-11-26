@@ -96,6 +96,20 @@ jobs:
           mkdir -p dist/client/_worker.js
           cp -R dist/server/. dist/client/_worker.js/
           rm -f dist/client/_worker.js/wrangler.json
+          mv dist/client/_worker.js/index.js dist/client/_worker.js/app.js
+          cat > dist/client/_worker.js/index.js <<'WORKER'
+          import app from "./app.js";
+
+          export default {
+            async fetch(request, env, context) {
+              const asset = await env.ASSETS.fetch(request);
+              if (asset.status !== 404) {
+                return asset;
+              }
+              return app.fetch(request, env, context);
+            },
+          };
+          WORKER
 
       - name: Deploy production site
         run: >-
