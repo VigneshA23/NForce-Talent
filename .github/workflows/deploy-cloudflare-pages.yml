@@ -70,7 +70,7 @@ jobs:
             '{
               "$schema": "node_modules/wrangler/config-schema.json",
               name: $project,
-              compatibility_date: "2026-05-15",
+              compatibility_date: "2026-11-26",
               compatibility_flags: ["nodejs_compat"],
               pages_build_output_dir: "dist/client",
               vars: {
@@ -93,6 +93,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          jq '.compatibility_date = "2026-11-26"' dist/server/wrangler.json > dist/server/wrangler.tmp
+          mv dist/server/wrangler.tmp dist/server/wrangler.json
           mkdir -p dist/client/_worker.js
           cp -R dist/server/. dist/client/_worker.js/
           rm -f dist/client/_worker.js/wrangler.json
