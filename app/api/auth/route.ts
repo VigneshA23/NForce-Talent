@@ -12,11 +12,11 @@ export async function GET(){
  try{const m=await session();return reply({email:m.email,name:m.name,configured:true,authenticated:true,canBootstrap:false})}catch{}
  return reply({email:'',configured:true,authenticated:false,canBootstrap:false});
 }
-export async function POST(request:Request){try{
+export async function POST(request:Request){let stage='request';try{
  if(request.headers.get('origin')!==new URL(request.url).origin||request.headers.get('sec-fetch-site')==='cross-site')return reply({error:'Refresh the page and try again.'},403);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return reply({error:'Unsupported request.'},415);
  const raw=await request.text();if(raw.length>8192)return reply({error:'Request too large.'},413);let b:any;try{b=JSON.parse(raw)}catch{return reply({error:'Invalid request.'},400)}
- const d=db(),now=Date.now();
+ stage='database';const d=db(),now=Date.now();
  if(b.action==='logout'){const t=(await cookies()).get(COOKIE)?.value;if(t)await d.prepare('DELETE FROM portal_sessions WHERE token_hash=?').bind(digest(t)).run();return reply({ok:true},200,sessionCookie(''))}
  const email=typeof b.email==='string'?b.email.trim().toLowerCase().slice(0,254):'';
  const m=['issueTemp','issueReset'].includes(b.action)?await session():await d.prepare("SELECT * FROM members WHERE lower(email)=? AND active=1 AND role IN ('hr','admin')").bind(email).first<any>()||{id:'unknown:'+digest(email),email,role:''};
@@ -41,14 +41,14 @@ export async function POST(request:Request){try{
  const c=await d.prepare('SELECT * FROM portal_credentials WHERE member_id=?').bind(m.id).first<any>();
  if(b.action==='login'){
   const pw=typeof b.password==='string'&&b.password.length<=512?b.password:'';
-  const matches=await verifyPassword(pw,c?.password_hash||dummy);
+  stage='password';const matches=await verifyPassword(pw,c?.password_hash||dummy);
   if(!c||!matches||typeof b.email!=='string'||b.email.trim().toLowerCase()!==m.email.toLowerCase())return invalid();
   if(c.temporary){
    if(!c.temporary_expires_at||c.temporary_expires_at<=now)return invalid();
    const challenge=secretToken();await d.batch([d.prepare('DELETE FROM password_resets WHERE member_id=?').bind(m.id),d.prepare('INSERT INTO password_resets(token_hash,member_id,expires_at) VALUES(?,?,?)').bind(digest(challenge),m.id,now+600000),d.prepare('DELETE FROM auth_limits WHERE key=?').bind(key)]);
    return reply({ok:true,mustChangePassword:true,token:challenge},200,sessionCookie(''));
   }
-  const token=await createPortalSession(m.id,m.id,c.version,b.remember===true);await d.batch([d.prepare('DELETE FROM auth_limits WHERE key=?').bind(key),d.prepare('UPDATE members SET last_login_at=? WHERE id=?').bind(now,m.id)]);return reply({ok:true},200,sessionCookie(token,b.remember===true));
+  stage='session';const token=await createPortalSession(m.id,m.id,c.version,b.remember===true);await d.batch([d.prepare('DELETE FROM auth_limits WHERE key=?').bind(key),d.prepare('UPDATE members SET last_login_at=? WHERE id=?').bind(now,m.id)]);return reply({ok:true},200,sessionCookie(token,b.remember===true));
  }
  validatePassword(b.password);
  if(typeof b.email!=='string'||b.email.trim().toLowerCase()!==m.email.toLowerCase())return invalid();
@@ -72,4 +72,4 @@ export async function POST(request:Request){try{
  await d.batch([d.prepare('DELETE FROM portal_sessions WHERE member_id=?').bind(m.id),d.prepare('DELETE FROM password_resets WHERE member_id=?').bind(m.id),d.prepare('DELETE FROM auth_limits WHERE key=?').bind(key),event(m,b.action==='setup'?'Created portal password':'Reset portal password',m.id)]);
  // Require a fresh login after setup; recovery secret is displayed once and is never logged.
  return reply({ok:true,recoveryCode},200,sessionCookie(''));
- }catch(e){const msg=e instanceof Error?e.message:'';if(msg.startsWith('Use 8')||msg.startsWith('Choose a less'))return reply({error:msg},400);return reply({error:'Unable to complete sign-in. Please try again or contact your HR Administrator.'},400)}}
+ }catch(e){const msg=e instanceof Error?e.message:'';if(msg.startsWith('Use 8')||msg.startsWith('Choose a less'))return reply({error:msg},400);return reply({error:'Unable to complete sign-in. Please try again or contact your HR Administrator.',reference:stage},400)}}
