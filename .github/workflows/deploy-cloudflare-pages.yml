@@ -52,9 +52,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          if ! D1_INFO_JSON="$(pnpm dlx wrangler@4.168.0 d1 info "$CLOUDFLARE_D1_DATABASE" --json 2>/dev/null)"; then
-            pnpm dlx wrangler@4.168.0 d1 create "$CLOUDFLARE_D1_DATABASE" --location apac
-            D1_INFO_JSON="$(pnpm dlx wrangler@4.168.0 d1 info "$CLOUDFLARE_D1_DATABASE" --json)"
+          if ! D1_INFO_JSON="$(npx --yes wrangler@4.168.0 d1 info "$CLOUDFLARE_D1_DATABASE" --json 2>/dev/null)"; then
+            npx --yes wrangler@4.168.0 d1 create "$CLOUDFLARE_D1_DATABASE" --location apac
+            D1_INFO_JSON="$(npx --yes wrangler@4.168.0 d1 info "$CLOUDFLARE_D1_DATABASE" --json)"
           fi
 
           D1_DATABASE_ID="$(jq -r '.uuid // .id // .database_id // empty' <<<"$D1_INFO_JSON")"
@@ -63,11 +63,11 @@ jobs:
             exit 1
           fi
 
-          PAGES_PROJECTS_JSON="$(pnpm dlx wrangler@4.168.0 pages project list --json)"
+          PAGES_PROJECTS_JSON="$(npx --yes wrangler@4.168.0 pages project list --json)"
           if ! jq -e --arg project "$CLOUDFLARE_PAGES_PROJECT" \
             'if type == "array" then any(.[]; (.name // .project_name) == $project) else false end' \
             <<<"$PAGES_PROJECTS_JSON" >/dev/null; then
-            pnpm dlx wrangler@4.168.0 pages project create "$CLOUDFLARE_PAGES_PROJECT" \
+            npx --yes wrangler@4.168.0 pages project create "$CLOUDFLARE_PAGES_PROJECT" \
               --production-branch main \
               --compatibility-date 2026-05-15 \
               --compatibility-flags nodejs_compat
@@ -97,7 +97,7 @@ jobs:
             }' > wrangler.jsonc
 
       - name: Apply database migrations
-        run: pnpm dlx wrangler@4.168.0 d1 migrations apply DB --remote --config wrangler.jsonc
+        run: npx --yes wrangler@4.168.0 d1 migrations apply DB --remote --config wrangler.jsonc
 
       - name: Package the Pages Worker
         shell: bash
@@ -109,7 +109,7 @@ jobs:
 
       - name: Deploy production site
         run: >-
-          pnpm dlx wrangler@4.168.0 pages deploy dist/client
+          npx --yes wrangler@4.168.0 pages deploy dist/client
           --project-name "$CLOUDFLARE_PAGES_PROJECT"
           --branch main
           --commit-hash "$GITHUB_SHA"
