@@ -16,7 +16,6 @@ concurrency:
 env:
   CLOUDFLARE_PAGES_PROJECT: nforce-talent
   CLOUDFLARE_D1_DATABASE: nforce-talent-db
-  CLOUDFLARE_R2_BUCKET: nforce-talent-files
 
 jobs:
   deploy:
@@ -64,10 +63,6 @@ jobs:
             exit 1
           fi
 
-          if ! pnpm exec wrangler r2 bucket info "$CLOUDFLARE_R2_BUCKET" >/dev/null 2>&1; then
-            pnpm exec wrangler r2 bucket create "$CLOUDFLARE_R2_BUCKET" --location apac
-          fi
-
           PAGES_PROJECTS_JSON="$(pnpm exec wrangler pages project list --json)"
           if ! jq -e --arg project "$CLOUDFLARE_PAGES_PROJECT" \
             'if type == "array" then any(.[]; (.name // .project_name) == $project) else false end' \
@@ -82,7 +77,6 @@ jobs:
             --arg project "$CLOUDFLARE_PAGES_PROJECT" \
             --arg database "$CLOUDFLARE_D1_DATABASE" \
             --arg databaseId "$D1_DATABASE_ID" \
-            --arg bucket "$CLOUDFLARE_R2_BUCKET" \
             '{
               "$schema": "node_modules/wrangler/config-schema.json",
               name: $project,
@@ -99,10 +93,6 @@ jobs:
                 database_name: $database,
                 database_id: $databaseId,
                 migrations_dir: "drizzle"
-              }],
-              r2_buckets: [{
-                binding: "BUCKET",
-                bucket_name: $bucket
               }]
             }' > wrangler.jsonc
 
