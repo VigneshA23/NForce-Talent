@@ -1,0 +1,91 @@
+name: Import encrypted production data
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/import-production-data.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nforce-production-data-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Restore original NForce Talent records
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_D1_DATABASE: nforce-talent-db
+      DATA_MIGRATION_KEY: ${{ secrets.DATA_MIGRATION_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate migration secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATA_MIGRATION_KEY:-}" ]]; then
+            echo "DATA_MIGRATION_KEY is not configured."
+            exit 1
+          fi
+
+      - name: Decrypt approved migration package
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const {createDecipheriv,createHash}=require('node:crypto');
+          const {readFileSync,writeFileSync}=require('node:fs');
+          const packageData=JSON.parse(readFileSync('.migration/production-data.enc.json','utf8'));
+          if(packageData.algorithm!=='aes-256-gcm')throw new Error('Unsupported migration package');
+          const key=createHash('sha256').update(process.env.DATA_MIGRATION_KEY).digest();
+          const decipher=createDecipheriv('aes-256-gcm',key,Buffer.from(packageData.iv,'base64'));
+          decipher.setAuthTag(Buffer.from(packageData.tag,'base64'));
+          const plaintext=Buffer.concat([
+            decipher.update(Buffer.from(packageData.data,'base64')),
+            decipher.final()
+          ]);
+          writeFileSync('migration-data.tar.gz',plaintext,{mode:0o600});
+          NODE
+          mkdir -p migration-plain
+          tar -xzf migration-data.tar.gz -C migration-plain
+
+      - name: Import original employee and interview records
+        shell: bash
+        run: |
+          set -euo pipefail
+          for migration in \
+            migration-plain/drizzle/0012_signature_aviation_history.sql \
+            migration-plain/drizzle/0013_confirmed_signature_aviation_people.sql \
+            migration-plain/drizzle/0014_india_time_and_availability.sql \
+            migration-plain/drizzle/0015_clean_import_language.sql \
+            migration-plain/migration-runtime.sql
+          do
+            npx --yes wrangler@4.168.0 d1 execute "$CLOUDFLARE_D1_DATABASE" --remote --file "$migration"
+          done
+
+      - name: Verify restored production records
+        run: >-
+          npx --yes wrangler@4.168.0 d1 execute "$CLOUDFLARE_D1_DATABASE" --remote
+          --command "SELECT
+          (SELECT COUNT(*) FROM people WHERE sample=0) AS real_people,
+          (SELECT COUNT(*) FROM requirements WHERE sample=0) AS real_requirements,
+          (SELECT COUNT(*) FROM applications WHERE id LIKE 'import-a-%') AS imported_applications,
+          (SELECT COUNT(*) FROM interviews WHERE id LIKE 'import-i-%') AS imported_interviews,
+          (SELECT COUNT(*) FROM feedback_requests) AS feedback_requests,
+          (SELECT client_result FROM applications WHERE id='import-a-sig-rohan-pakala-pricing-revenue-qa') AS rohan_result,
+          (SELECT version FROM applications WHERE id='import-a-sig-rohan-pakala-pricing-revenue-qa') AS rohan_version;"
+
+      - name: Remove decrypted files
+        if: always()
+        run: rm -rf migration-plain migration-data.tar.gz
