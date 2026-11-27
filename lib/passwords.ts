@@ -1,4 +1,4 @@
-import {scrypt,randomBytes,createHash,pbkdf2} from 'node:crypto';
+import {scrypt,randomBytes,createHash,pbkdf2Sync} from 'node:crypto';
 export const passwordPolicy='Use 8–128 characters. A long, unique passphrase works best.';
 export function validatePassword(value:unknown):asserts value is string{
  if(typeof value!=='string'||[...value].length<8||[...value].length>128)throw new Error(passwordPolicy);
@@ -15,9 +15,8 @@ const safeEqual=(actual:Uint8Array,expected:Uint8Array)=>{
  for(let i=0;i<actual.length;i++)difference|=actual[i]^expected[i];
  return difference===0;
 };
-const derivePbkdf2=(password:string,saltHex:string,iterations=PBKDF2_ITERATIONS)=>new Promise<Buffer>((resolve,reject)=>
- pbkdf2(password,unhex(saltHex),iterations,32,'sha256',(error,key)=>error?reject(error):resolve(key))
-);
+const derivePbkdf2=async(password:string,saltHex:string,iterations=PBKDF2_ITERATIONS)=>
+ pbkdf2Sync(password,unhex(saltHex),iterations,32,'sha256');
 const deriveScrypt=(password:string,salt:string)=>new Promise<Buffer>((resolve,reject)=>scrypt(password,salt,32,{N:16384,r:8,p:5,maxmem:32*1024*1024},(error,key)=>error?reject(error):resolve(key)));
 export async function hashPassword(password:string){
  const salt=randomBytes(16).toString('hex');
