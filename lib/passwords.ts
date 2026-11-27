@@ -1,4 +1,4 @@
-import {scrypt,randomBytes,createHash,pbkdf2Sync} from 'node:crypto';
+import {scrypt,randomBytes,createHash,createHmac} from 'node:crypto';
 export const passwordPolicy='Use 8–128 characters. A long, unique passphrase works best.';
 export function validatePassword(value:unknown):asserts value is string{
  if(typeof value!=='string'||[...value].length<8||[...value].length>128)throw new Error(passwordPolicy);
@@ -15,8 +15,17 @@ const safeEqual=(actual:Uint8Array,expected:Uint8Array)=>{
  for(let i=0;i<actual.length;i++)difference|=actual[i]^expected[i];
  return difference===0;
 };
-const derivePbkdf2=async(password:string,saltHex:string,iterations=PBKDF2_ITERATIONS)=>
- pbkdf2Sync(password,unhex(saltHex),iterations,32,'sha256');
+const derivePbkdf2=async(password:string,saltHex:string,iterations=PBKDF2_ITERATIONS)=>{
+ const key=new TextEncoder().encode(password),salt=unhex(saltHex),block=new Uint8Array(4);
+ new DataView(block.buffer).setUint32(0,1,false);
+ let current=createHmac('sha256',key).update(Buffer.concat([Buffer.from(salt),Buffer.from(block)])).digest();
+ const derived=Uint8Array.from(current);
+ for(let iteration=1;iteration<iterations;iteration++){
+  current=createHmac('sha256',key).update(current).digest();
+  for(let index=0;index<derived.length;index++)derived[index]^=current[index];
+ }
+ return derived;
+};
 const deriveScrypt=(password:string,salt:string)=>new Promise<Buffer>((resolve,reject)=>scrypt(password,salt,32,{N:16384,r:8,p:5,maxmem:32*1024*1024},(error,key)=>error?reject(error):resolve(key)));
 export async function hashPassword(password:string){
  const salt=randomBytes(16).toString('hex');
