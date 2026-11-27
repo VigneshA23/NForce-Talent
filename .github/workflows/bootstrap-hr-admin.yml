@@ -95,6 +95,13 @@ jobs:
           WHERE member_id IN (
             SELECT id FROM members WHERE lower(email) = 'hr@nforceone.com'
           );
+
+          DELETE FROM auth_limits
+          WHERE key IN (
+            SELECT id || ':password'
+            FROM members
+            WHERE lower(email) = 'hr@nforceone.com'
+          );
           `;
 
           fs.writeFileSync("bootstrap-hr.sql", sql, { mode: 0o600 });
@@ -103,6 +110,24 @@ jobs:
       - name: Initialize HR administrator in Cloudflare D1
         run: npx --yes wrangler@4.168.0 d1 execute "$CLOUDFLARE_D1_DATABASE" --remote --file bootstrap-hr.sql
 
-      - name: Remove generated SQL
+      - name: Verify live HR sign-in
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(jq -nc --arg email "hr@nforceone.com" --arg password "$HR_BOOTSTRAP_PASSWORD" '{action:"login",email:$email,password:$password,remember:false}')"
+          status="$(curl --silent --show-error --output auth-response.json --write-out '%{http_code}' \
+            --request POST "https://nforce-talent.pages.dev/api/auth" \
+            --header "Content-Type: application/json" \
+            --header "Origin: https://nforce-talent.pages.dev" \
+            --header "Referer: https://nforce-talent.pages.dev/" \
+            --data "$payload")"
+          if [[ "$status" != "200" ]]; then
+            echo "Live HR sign-in verification failed with HTTP $status."
+            cat auth-response.json
+            exit 1
+          fi
+          echo "Live HR sign-in verification succeeded."
+
+      - name: Remove generated files
         if: always()
-        run: rm -f bootstrap-hr.sql
+        run: rm -f bootstrap-hr.sql auth-response.json
