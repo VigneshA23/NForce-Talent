@@ -72,4 +72,4 @@ export async function POST(request:Request){let stage='request';try{
  await d.batch([d.prepare('DELETE FROM portal_sessions WHERE member_id=?').bind(m.id),d.prepare('DELETE FROM password_resets WHERE member_id=?').bind(m.id),d.prepare('DELETE FROM auth_limits WHERE key=?').bind(key),event(m,b.action==='setup'?'Created portal password':'Reset portal password',m.id)]);
  // Require a fresh login after setup; recovery secret is displayed once and is never logged.
  return reply({ok:true,recoveryCode},200,sessionCookie(''));
- }catch(e){const msg=e instanceof Error?e.message:'';if(msg.startsWith('Use 8')||msg.startsWith('Choose a less'))return reply({error:msg},400);return reply({error:'Unable to complete sign-in. Please try again or contact your HR Administrator.',reference:stage},400)}}
+ }catch(e){const msg=e instanceof Error?e.message:'';if(msg.startsWith('Use 8')||msg.startsWith('Choose a less'))return reply({error:msg},400);return reply({error:'Unable to complete sign-in. Please try again or contact your HR Administrator.'},400)}}
