@@ -1,0 +1,47 @@
+name: Diagnose Cloudflare database binding
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-cloudflare-binding.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_D1_DATABASE: nforce-talent-db
+      CLOUDFLARE_PAGES_PROJECT: nforce-talent
+
+    steps:
+      - name: Check Cloudflare database and Pages binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          d1_json="$(npx --yes wrangler@4.168.0 d1 info "$CLOUDFLARE_D1_DATABASE" --json)"
+          expected_id="$(jq -r '.uuid // .id // .database_id // empty' <<<"$d1_json")"
+          project_json="$(curl --fail-with-body --silent --show-error \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$CLOUDFLARE_PAGES_PROJECT" \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+          production_id="$(jq -r '.result.deployment_configs.production.d1_databases.DB.id // empty' <<<"$project_json")"
+          preview_id="$(jq -r '.result.deployment_configs.preview.d1_databases.DB.id // empty' <<<"$project_json")"
+          echo "Named D1 database ID: $expected_id"
+          echo "Production Pages DB ID: $production_id"
+          echo "Preview Pages DB ID: $preview_id"
+          [[ -n "$expected_id" && "$expected_id" == "$production_id" ]]
+
+      - name: Confirm non-sensitive HR record state
+        run: >-
+          npx --yes wrangler@4.168.0 d1 execute "$CLOUDFLARE_D1_DATABASE" --remote
+          --command "SELECT
+          (SELECT COUNT(*) FROM members WHERE lower(email)='hr@nforceone.com' AND active=1 AND role IN ('hr','admin')) AS active_hr_members,
+          (SELECT COUNT(*) FROM portal_credentials c JOIN members m ON m.id=c.member_id WHERE lower(m.email)='hr@nforceone.com') AS hr_credentials,
+          (SELECT COUNT(*) FROM portal_credentials c JOIN members m ON m.id=c.member_id WHERE lower(m.email)='hr@nforceone.com' AND c.temporary=0) AS permanent_credentials;"
