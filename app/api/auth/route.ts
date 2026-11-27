@@ -16,14 +16,14 @@ export async function POST(request:Request){let stage='request';try{
  if(request.headers.get('origin')!==new URL(request.url).origin||request.headers.get('sec-fetch-site')==='cross-site')return reply({error:'Refresh the page and try again.'},403);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return reply({error:'Unsupported request.'},415);
  const raw=await request.text();if(raw.length>8192)return reply({error:'Request too large.'},413);let b:any;try{b=JSON.parse(raw)}catch{return reply({error:'Invalid request.'},400)}
- stage='database';const d=db(),now=Date.now();
+ stage='database-binding';const d=db(),now=Date.now();
  if(b.action==='logout'){const t=(await cookies()).get(COOKIE)?.value;if(t)await d.prepare('DELETE FROM portal_sessions WHERE token_hash=?').bind(digest(t)).run();return reply({ok:true},200,sessionCookie(''))}
  const email=typeof b.email==='string'?b.email.trim().toLowerCase().slice(0,254):'';
  const m=['issueTemp','issueReset'].includes(b.action)?await session():await d.prepare("SELECT * FROM members WHERE lower(email)=? AND active=1 AND role IN ('hr','admin')").bind(email).first<any>()||{id:'unknown:'+digest(email),email,role:''};
  if(!['login','setup','recover','reset','issueReset','issueTemp'].includes(b.action))return reply({error:'Unsupported request.'},400);
  const key=`${m.id}:${['issueReset','issueTemp','bootstrapTemp'].includes(b.action)?'admin':'password'}`;
- await d.prepare('INSERT INTO auth_limits(key,count,window_start) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN window_start<? THEN 1 ELSE count+1 END,window_start=CASE WHEN window_start<? THEN ? ELSE window_start END').bind(key,now,now-900000,now-900000,now).run();
- const rate=await d.prepare('SELECT count FROM auth_limits WHERE key=?').bind(key).first<{count:number}>();if((rate?.count||0)>10)return reply({error:'Too many attempts. Please wait 15 minutes before trying again.'},429);
+ stage='rate-write';await d.prepare('INSERT INTO auth_limits(key,count,window_start) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN window_start<? THEN 1 ELSE count+1 END,window_start=CASE WHEN window_start<? THEN ? ELSE window_start END').bind(key,now,now-900000,now-900000,now).run();
+ stage='rate-read';const rate=await d.prepare('SELECT count FROM auth_limits WHERE key=?').bind(key).first<{count:number}>();if((rate?.count||0)>10)return reply({error:'Too many attempts. Please wait 15 minutes before trying again.'},429);
  if(b.action==='issueTemp'){
   const actor=await session();if(actor.role!=='hr')return reply({error:'Access denied.'},403);
   const target=await d.prepare("SELECT * FROM members WHERE id=? AND active=1 AND role IN ('hr','admin')").bind(typeof b.memberId==='string'?b.memberId:'').first<any>();if(!target)return reply({error:'Select an active HR Administrator or Administrator.'},400);
@@ -38,7 +38,7 @@ export async function POST(request:Request){let stage='request';try{
   const target=typeof b.memberId==='string'?await d.prepare("SELECT id FROM members WHERE id=? AND active=1 AND role IN ('hr','admin')").bind(b.memberId).first<{id:string}>():null;if(!target)return reply({error:'Select an active HR Administrator or Administrator.'},400);
   const token=secretToken();await d.batch([d.prepare('DELETE FROM password_resets WHERE member_id=? OR expires_at<?').bind(target.id,now),d.prepare('INSERT INTO password_resets(token_hash,member_id,expires_at) VALUES(?,?,?)').bind(digest(token),target.id,now+900000),event(actor,'Issued password reset link',target.id)]);return reply({token,expiresIn:900});
  }
- const c=await d.prepare('SELECT * FROM portal_credentials WHERE member_id=?').bind(m.id).first<any>();
+ stage='credential-read';const c=await d.prepare('SELECT * FROM portal_credentials WHERE member_id=?').bind(m.id).first<any>();
  if(b.action==='login'){
   const pw=typeof b.password==='string'&&b.password.length<=512?b.password:'';
   stage='password';const matches=await verifyPassword(pw,c?.password_hash||dummy);
