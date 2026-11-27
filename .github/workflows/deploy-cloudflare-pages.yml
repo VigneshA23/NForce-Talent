@@ -103,6 +103,36 @@ jobs:
           ' dist/server/wrangler.json > dist/server/wrangler.tmp
           mv dist/server/wrangler.tmp dist/server/wrangler.json
 
+          PAGE_CONFIG="$(jq -n --arg databaseId "$D1_DATABASE_ID" '{
+            deployment_configs: {
+              production: {
+                compatibility_date: "2026-11-26",
+                compatibility_flags: ["nodejs_compat"],
+                d1_databases: {DB: {id: $databaseId}},
+                env_vars: {
+                  FEEDBACK_DELIVERY_ENABLED: {type: "plain_text", value: "false"},
+                  FEEDBACK_FROM_NAME: {type: "plain_text", value: "NForce Talent"},
+                  PUBLIC_FEEDBACK_URL: {type: "plain_text", value: "https://nforce-talent.pages.dev"}
+                }
+              },
+              preview: {
+                compatibility_date: "2026-11-26",
+                compatibility_flags: ["nodejs_compat"],
+                d1_databases: {DB: {id: $databaseId}},
+                env_vars: {
+                  FEEDBACK_DELIVERY_ENABLED: {type: "plain_text", value: "false"},
+                  FEEDBACK_FROM_NAME: {type: "plain_text", value: "NForce Talent"},
+                  PUBLIC_FEEDBACK_URL: {type: "plain_text", value: "https://nforce-talent.pages.dev"}
+                }
+              }
+            }
+          }')"
+          curl --fail-with-body --silent --show-error --request PATCH \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$CLOUDFLARE_PAGES_PROJECT" \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$PAGE_CONFIG" >/dev/null
+
       - name: Apply database migrations
         run: npx --yes wrangler@4.168.0 d1 migrations apply DB --remote --config wrangler.jsonc
 
